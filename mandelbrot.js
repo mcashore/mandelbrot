@@ -5,6 +5,25 @@
 
 var MANDEL_ITERS = 50; // how many iterations in the mandelbrot sequence
 
+var canvasData = {
+  top: 2,
+  left: -4,
+  bottom: -2,
+  right: 4
+}; // image data for the canvas
+
+var insideColor = {
+  r: 10,
+  g: 10,
+  b: 200
+};
+
+var outsideColor = {
+  r: 10,
+  g: 100,
+  b: 100
+};
+
 /**
  * Complex number data structure
  */
@@ -35,35 +54,47 @@ function Complex(a, b) {
  * @b instance of Complex
  */
 function mandelbrot(c) {
-  var z = new Complex(0, 0);
+  var z = new Complex(0, 0),
+      belongs = true,
+      val;
 
-  for(var i = 0; i < MANDEL_ITERS; i++) {
+  for(var i = 1; i < MANDEL_ITERS; i++) {
     z = z.multiply(z).add(c);
     if(Math.pow(z.a, 2) + Math.pow(z.b, 2) > 4) {
-      return i;
+      belongs = false;
+      break;
     }
   }
 
-  return -1;
+  if(belongs) {
+    val = Math.sqrt(z.a * z.a + z.b * z.b);
+  } else {
+    val = i;
+  }
+
+  return {
+    inside: belongs,
+    weight: val
+  };
 }
 
 function drawMandelbrot(canvas) {
-  drawMandelbrotFromCoords(canvas, new Complex(-4, 2), new Complex(4, -2));
+  drawMandelbrotFromCoords(canvas, canvasData.top, canvasData.left, canvasData.bottom, canvasData.right);
 }
 
-function drawMandelbrotFromCoords(canvas, topLeftCoord, bottomRightCoord) {
+function drawMandelbrotFromCoords(canvas, top, left, bottom, right) {
   var height = canvas.height;
   var width = canvas.width;
   var ctx = canvas.getContext("2d");
-  var canvasData = ctx.getImageData(0, 0, width, height);
+  var imgData = ctx.getImageData(0, 0, width, height);
 
-  var length_a = bottomRightCoord.a - topLeftCoord.a;
-  var length_b = topLeftCoord.b - bottomRightCoord.b;
+  var length_a = right - left;
+  var length_b = top - bottom;
   var diff_a = length_a / width;
   var diff_b = length_b / height;
 
-  // start iterating from the top left at (-2, 2)
-  var currPoint = new Complex(topLeftCoord.a, topLeftCoord.b);
+  // start iterating from the top left
+  var currPoint = new Complex(left, top);
   //var a = -2, b = 2;
 
   // iterate through all pixels
@@ -71,24 +102,35 @@ function drawMandelbrotFromCoords(canvas, topLeftCoord, bottomRightCoord) {
 
     // move to the next point
     if(i % width == 0) {
-      currPoint.a = topLeftCoord.a;
+      currPoint.a = left;
       currPoint.b -= diff_b;
     } else {
       currPoint.a += diff_a;
     }
 
-    iters = mandelbrot(currPoint);
-
-    if(iters == -1) {
-      colourPixel(canvasData, i, 100, 200, 100, 200);
+    // color based on how many iterations to leave the set
+    response = mandelbrot(currPoint);
+    weight = response.weight;
+    //colorPixel(imgData, i, 100 * weight, 50 * weight, 200 * weight, 250);
+    if(response.inside) {
+      colorPixel(imgData, i, insideColor.r * weight, insideColor.g * weight, insideColor.b * weight, 300);
     } else {
-      weight = iters / MANDEL_ITERS
-      colourPixel(canvasData, i, 200 * weight, 200 * weight, 200 * weight, 100);
+      colorPixel(imgData, i, outsideColor.r * weight, outsideColor.g * weight, outsideColor.b * weight, 300);
     }
 
   }
 
-  ctx.putImageData(canvasData, 0, 0);
+  ctx.putImageData(imgData, 0, 0);
+
+  // save information for our friends
+  canvasData.imgData  = imgData;
+  canvasData.left     = left;
+  canvasData.right    = right;
+  canvasData.bottom   = bottom;
+  canvasData.top      = top;
+  canvasData.canvas   = canvas;
+
+
 
   // add click listener and redraw on click
   canvas.addEventListener("click", function(event) {
@@ -97,39 +139,74 @@ function drawMandelbrotFromCoords(canvas, topLeftCoord, bottomRightCoord) {
     var newCanv = oldCanv.cloneNode(true);
     oldCanv.parentNode.replaceChild(newCanv, oldCanv);
 
-    newBounds = newBoundsFromClick(event, topLeftCoord, bottomRightCoord, width, height, length_a, length_b);
+    newBounds = newBoundsFromClick(newCanv, event, top, left, bottom, right, width, height, length_a, length_b);
 
-    drawMandelbrotFromCoords(newCanv, newBounds.topLeft, newBounds.bottomRight);
+    drawMandelbrotFromCoords(newCanv, newBounds.top, newBounds.left, newBounds.bottom, newBounds.right);
   } , false);
 }
 
-function newBoundsFromClick(event, topLeftCoord, bottomRightCoord, width, height, length_a, length_b) {
+// all those parameters...
+function newBoundsFromClick(canvas, event, top, left, bottom, right, width, height, length_a, length_b) {
   // convert mouse click to a point on the complex plane
-  var mouse_a = topLeftCoord.a + (event.pageX / width) * length_a;
-  var mouse_b = topLeftCoord.b - (event.pageY / height) * length_b;
+  var mouse_a = left + ((event.pageX - canvas.offsetLeft) / width) * length_a;
+  var mouse_b = top - ((event.pageY - canvas.offsetTop) / height) * length_b;
 
-  // "centre" is kind of a misnomer
-  var newCentre = new Complex(mouse_a, mouse_b);
-
-  var newTop = (topLeftCoord.b + newCentre.b) / 2;
-  var newLeft = (topLeftCoord.a + newCentre.a) / 2;
-  var newBottom = (newCentre.b + bottomRightCoord.b) / 2;
-  var newRight = (newCentre.a + bottomRightCoord.a) / 2;
+  var newTop = (top + mouse_b) / 2;
+  var newLeft = (left + mouse_a) / 2;
+  var newBottom = (bottom + mouse_b) / 2;
+  var newRight = (right + mouse_a) / 2;
 
   return {
-    "topLeft": new Complex(newLeft, newTop),
-    "bottomRight": new Complex(newRight, newBottom)
+    top: newTop,
+    left: newLeft,
+    bottom: newBottom,
+    right: newRight
   };
 }
 
-function colourPixel(canvasData, pixel, r, g, b, a) {
+function drawFromForm() {
+  button = document.getElementById("redraw");
+  button.disabled = true;
+
+  hex = document.getElementById("insideColor").value;
+  insideColor = hexToRgb(hex);
+
+  hex = document.getElementById("outsideColor").value;
+  outsideColor = hexToRgb(hex);
+
+  drawMandelbrot(document.getElementById("mandelbrot"));
+
+  button.disabled = false;
+}
+
+function colorPixel(imgData, pixel, r, g, b, a) {
   scaled = pixel * 4;
-  canvasData.data[scaled] = r;
-  canvasData.data[scaled + 1] = g;
-  canvasData.data[scaled + 2] = b;
-  canvasData.data[scaled + 3] = a;
+  imgData.data[scaled] = r;
+  imgData.data[scaled + 1] = g;
+  imgData.data[scaled + 2] = b;
+  imgData.data[scaled + 3] = a;
+}
+
+// http://stackoverflow.com/questions/5623838/rgb-to-hex-and-hex-to-rgb
+function hexToRgb(hex) {
+  var result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+  return result ? {
+    r: parseInt(result[1], 16),
+    g: parseInt(result[2], 16),
+    b: parseInt(result[3], 16)
+  } : null;
+}
+
+function rgbToHex(color) {
+  var r = color.r, g = color.g, b = color.b;
+  return "#" + ((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1);
 }
 
 document.addEventListener("DOMContentLoaded", function() {
-  drawMandelbrot(document.getElementById("mandelbrot"));
+  canvas = document.getElementById("mandelbrot");
+  drawMandelbrot(canvas);
+  // make sure form values are correct. Hacky way of doing this that relies on this code running before
+  // the jscolor code runs...
+  document.getElementById("insideColor").value = rgbToHex(insideColor); //color.fromString(rgbToHex(insideColor));
+  document.getElementById("outsideColor").value = rgbToHex(outsideColor); //color.fromString(rgbToHex(outsideColor));
 });

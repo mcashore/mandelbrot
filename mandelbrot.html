@@ -2,9 +2,19 @@
 <html>
   <head>
     <title>Mandelbrot Canvas</title>
+    <link rel="stylesheet" type="text/css" href="mandelbrot.css" />
     <script type="text/javascript" src="mandelbrot.js"></script>
+    <script type="text/javascript" src="jscolor/jscolor.js"></script>
   </head>
   <body>
+    <div class="form">
+      <form>
+        Iterations: <input type="number" name="iterations"> <br />
+        Inside Colour: <input class="color" id="insideColor"> <br />
+        Outside Colour: <input class="color" id="outsideColor"> <br />
+        <button type="button" id="redraw" onclick="drawFromForm()">Redraw</button>
+      </form>
+    </div>
     <canvas id="mandelbrot" width="800" height="400">
       Mandelbrot set goes here
     </canvas>
