@@ -3,7 +3,9 @@
 // http://www.wikihow.com/Plot-the-Mandelbrot-Set-By-Hand
 // http://en.wikipedia.org/wiki/Mandelbrot_set
 
-var MANDEL_ITERS = 50; // how many iterations in the mandelbrot sequence
+var mandelIters = 200; // how many iterations in the mandelbrot sequence
+
+var zoomRate = 4;
 
 var canvasData = {
   top: 2,
@@ -12,16 +14,20 @@ var canvasData = {
   right: 4
 }; // image data for the canvas
 
+function randComponent() {
+  return Math.floor(Math.random() * 255);
+}
+
 var insideColor = {
-  r: 10,
-  g: 10,
-  b: 200
+  r: randComponent(),
+  g: randComponent(),
+  b: randComponent()
 };
 
 var outsideColor = {
-  r: 10,
-  g: 100,
-  b: 100
+  r: randComponent(),
+  g: randComponent(),
+  b: randComponent()
 };
 
 /**
@@ -53,12 +59,13 @@ function Complex(a, b) {
  * @a instance of Complex
  * @b instance of Complex
  */
+ // don't compute for areas that are known to be outside or inside for sure
 function mandelbrot(c) {
   var z = new Complex(0, 0),
       belongs = true,
       val;
 
-  for(var i = 1; i < MANDEL_ITERS; i++) {
+  for(var i = 1; i < mandelIters; i++) {
     z = z.multiply(z).add(c);
     if(Math.pow(z.a, 2) + Math.pow(z.b, 2) > 4) {
       belongs = false;
@@ -67,7 +74,7 @@ function mandelbrot(c) {
   }
 
   if(belongs) {
-    val = Math.sqrt(z.a * z.a + z.b * z.b);
+    val = Math.sqrt(z.a * z.a + z.b * z.b) + 1;
   } else {
     val = i;
   }
@@ -87,6 +94,8 @@ function drawMandelbrotFromCoords(canvas, top, left, bottom, right) {
   var width = canvas.width;
   var ctx = canvas.getContext("2d");
   var imgData = ctx.getImageData(0, 0, width, height);
+  var weights = [];
+  var insiders = [];
 
   var length_a = right - left;
   var length_b = top - bottom;
@@ -113,10 +122,12 @@ function drawMandelbrotFromCoords(canvas, top, left, bottom, right) {
     weight = response.weight;
     //colorPixel(imgData, i, 100 * weight, 50 * weight, 200 * weight, 250);
     if(response.inside) {
-      colorPixel(imgData, i, insideColor.r * weight, insideColor.g * weight, insideColor.b * weight, 300);
+      colorPixel(imgData, i, insideColor, weight); //insideColor.r * weight, insideColor.g * weight, insideColor.b * weight, 300);
     } else {
-      colorPixel(imgData, i, outsideColor.r * weight, outsideColor.g * weight, outsideColor.b * weight, 300);
+      colorPixel(imgData, i, outsideColor, weight); //.r * weight, outsideColor.g, outsideColor.b * weight, 300);
     }
+    weights.push(weight);
+    insiders.push(response.inside);
 
   }
 
@@ -124,6 +135,10 @@ function drawMandelbrotFromCoords(canvas, top, left, bottom, right) {
 
   // save information for our friends
   canvasData.imgData  = imgData;
+  canvasData.weights  = weights;
+  canvasData.insiders = insiders;
+  canvasData.width    = width;
+  canvasData.height   = height;
   canvasData.left     = left;
   canvasData.right    = right;
   canvasData.bottom   = bottom;
@@ -151,10 +166,10 @@ function newBoundsFromClick(canvas, event, top, left, bottom, right, width, heig
   var mouse_a = left + ((event.pageX - canvas.offsetLeft) / width) * length_a;
   var mouse_b = top - ((event.pageY - canvas.offsetTop) / height) * length_b;
 
-  var newTop = (top + mouse_b) / 2;
-  var newLeft = (left + mouse_a) / 2;
-  var newBottom = (bottom + mouse_b) / 2;
-  var newRight = (right + mouse_a) / 2;
+  var newTop    = mouse_b + (top - mouse_b) / zoomRate;
+  var newBottom = mouse_b - (mouse_b - bottom) / zoomRate;
+  var newLeft   = mouse_a - (mouse_a - left) / zoomRate;
+  var newRight  = mouse_a + (right - mouse_a) / zoomRate;
 
   return {
     top: newTop,
@@ -179,12 +194,38 @@ function drawFromForm() {
   button.disabled = false;
 }
 
-function colorPixel(imgData, pixel, r, g, b, a) {
+function colorPixel(imgData, pixel, color, weight) {
+  //weight *= Math.random();
   scaled = pixel * 4;
-  imgData.data[scaled] = r;
-  imgData.data[scaled + 1] = g;
-  imgData.data[scaled + 2] = b;
-  imgData.data[scaled + 3] = a;
+  imgData.data[scaled]     = color.r * weight;
+  imgData.data[scaled + 1] = color.g * weight;
+  imgData.data[scaled + 2] = color.b * weight;
+  imgData.data[scaled + 3] = 250;
+}
+
+function getColor(id) {
+  hex = document.getElementById(id).value;
+  return hexToRgb(hex);
+}
+
+function colorChanged() {
+  insideColor = getColor("insideColor");
+  outsideColor = getColor("outsideColor");
+
+  imgData = canvasData.imgData;
+
+  for(var i = 0; i < canvasData.width * canvasData.height; i++) {
+    weight = canvasData.weights[i];
+    if(canvasData.insiders[i]) {
+      colorPixel(imgData, i, insideColor, weight); //.r, insideColor.g * weight, insideColor.b * weight, 300);
+    } else {
+      colorPixel(imgData, i, outsideColor, weight); //.r * weight, outsideColor.g, outsideColor.b * weight, 300);
+    }
+  }
+
+  ctx = canvasData.canvas.getContext("2d");
+  ctx.putImageData(imgData, 0, 0);
+
 }
 
 // http://stackoverflow.com/questions/5623838/rgb-to-hex-and-hex-to-rgb
@@ -207,6 +248,8 @@ document.addEventListener("DOMContentLoaded", function() {
   drawMandelbrot(canvas);
   // make sure form values are correct. Hacky way of doing this that relies on this code running before
   // the jscolor code runs...
-  document.getElementById("insideColor").value = rgbToHex(insideColor); //color.fromString(rgbToHex(insideColor));
-  document.getElementById("outsideColor").value = rgbToHex(outsideColor); //color.fromString(rgbToHex(outsideColor));
+  inside = document.getElementById("insideColor");
+  inside.value = rgbToHex(insideColor); //color.fromString(rgbToHex(insideColor));
+  outside = document.getElementById("outsideColor");
+  outside.value = rgbToHex(outsideColor); //color.fromString(rgbToHex(outsideColor));
 });

@@ -10,8 +10,8 @@
     <div class="form">
       <form>
         Iterations: <input type="number" name="iterations"> <br />
-        Inside Colour: <input class="color" id="insideColor"> <br />
-        Outside Colour: <input class="color" id="outsideColor"> <br />
+        Inside Colour: <input class="color" id="insideColor" onchange="colorChanged()"> <br />
+        Outside Colour: <input class="color" id="outsideColor" onchange="colorChanged()"> <br />
         <button type="button" id="redraw" onclick="drawFromForm()">Redraw</button>
       </form>
     </div>
